@@ -22,7 +22,7 @@ def knn(train,test,k=5):
 cap  = cv2.VideoCapture(0)
 face_Cascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
 
-datasetPath = "./faceRecorded/"
+datasetPath = "./"
 
 faceData = []
 labels = []
@@ -77,4 +77,5 @@ while True:
 
 
 cap.release()
+
 cv2.destroyAllWindows()
