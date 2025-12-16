@@ -6,7 +6,7 @@ face_Cascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
 
 skip = 0
 faceData = []
-datasetPath = "./faceRecorded/"
+datasetPath = "./"
 
 fileName = input("Enter Your Name: ")
 
@@ -57,4 +57,5 @@ print(faceData.shape)
 np.save(datasetPath + fileName, faceData)
 
 cap.release()
+
 cv2.destroyAllWindows()
