@@ -1,28 +1,13 @@
 import cv2
 import os
 import numpy as np
+from sklearn.neighbors import KNeighborsClassifier
 
-def distance(v1,v2):
-    return np.sqrt(((v1-v2)**2).sum())
-
-def knn(train,test,k=5):
-    dist = []
-    for i in range(train.shape[0]):
-        ix = train[i, :-1]
-        iy = train[i, -1]
-        d = distance(test,ix)
-        dist.append([d, iy])
-    dk = sorted(dist, key=lambda x : x[0])[:k]
-    labels = np.array(dk)[:,-1]
-    output = np.unique(labels, return_counts=True)
-
-    index = np.argmax(output[1])
-    return output[0][index]
-
-cap  = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(0)
 face_Cascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
 
-datasetPath = "./"
+datasetPath = "./data/"
+os.makedirs(datasetPath, exist_ok=True)
 
 faceData = []
 labels = []
@@ -31,51 +16,60 @@ names = {}
 
 for fx in os.listdir(datasetPath):
     if fx.endswith('.npy'):
-        names[class_id] = fx[: -4]
-        dataItem = np.load(datasetPath + fx)
+        names[class_id] = fx[:-4]
+        dataItem = np.load(os.path.join(datasetPath, fx))
         faceData.append(dataItem)
 
-        target = class_id * np.ones((dataItem.shape[0],))
+        target = class_id * np.ones((dataItem.shape[0],), dtype=int)
         class_id += 1
         labels.append(target)
 
-faceDataSet = np.concatenate(faceData, axis=0)
-faceLabels = np.concatenate(labels, axis=0).reshape((-1,1))
-print(faceLabels.shape) 
-print(faceDataSet.shape)
+if len(faceData) == 0:
+    print("\n[!] No face datasets (.npy) found in the './data/' folder.")
+    print("    -> Run 'py getFaceData.py' to enroll face data, OR")
+    print("    -> Use the web app ('py app.py') to enroll faces via webcam!\n")
+    exit(0)
 
-trainSet = np.concatenate((faceDataSet,faceLabels),axis=1)
-print(trainSet.shape)
+faceDataSet = np.concatenate(faceData, axis=0)
+faceLabels = np.concatenate(labels, axis=0)
+print(f"Loaded dataset: {faceDataSet.shape[0]} samples, {faceDataSet.shape[1]} features, {len(names)} classes.")
+
+# Train Scikit-Learn KNeighborsClassifier model
+k_val = min(5, len(faceLabels))
+knn_model = KNeighborsClassifier(n_neighbors=k_val, metric="euclidean")
+knn_model.fit(faceDataSet, faceLabels)
+print(f"[OK] Scikit-Learn KNeighborsClassifier fitted (k={k_val}, metric='euclidean')")
 
 font = cv2.FONT_HERSHEY_SIMPLEX
 
 while True:
-    ret,frame = cap.read()
-    if ret == False:
+    ret, frame = cap.read()
+    if not ret:
         continue
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
     faces = face_Cascade.detectMultiScale(gray, 1.3, 5)
 
     for face in faces:
-        x,y,w,h = face
-
+        x, y, w, h = face
         offset = 5
-        faceSection = frame[y-offset:y+offset+h, x-offset:x+w+offset]
-        faceSection = cv2.resize(faceSection,(100,100))
+        faceSection = frame[max(0, y-offset):min(frame.shape[0], y+offset+h), max(0, x-offset):min(frame.shape[1], x+w+offset)]
+        faceSection = cv2.resize(faceSection, (100, 100))
 
-        out = knn(trainSet, faceSection.flatten())
+        # Scikit-Learn inference
+        face_query = faceSection.flatten().reshape(1, -1)
+        pred_label = knn_model.predict(face_query)[0]
+        probs = knn_model.predict_proba(face_query)[0]
+        conf_pct = probs[pred_label] * 100
 
-        cv2.putText(frame, names[int(out)],(x,y-10),cv2.FONT_HERSHEY_SIMPLEX,1,(255,0,0),2,cv2.LINE_AA)
-        cv2.rectangle(frame,(x,y), (x+w,y+h),(0,255,0),2)
-    
-    cv2.imshow("Face Recognizer",frame)
+        label_text = f"{names[int(pred_label)]} ({conf_pct:.0f}%)"
+        cv2.putText(frame, label_text, (x, y-10), font, 0.9, (255, 0, 0), 2, cv2.LINE_AA)
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+
+    cv2.imshow("Face Recognizer (Scikit-Learn KNN)", frame)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-
 cap.release()
-
 cv2.destroyAllWindows()
